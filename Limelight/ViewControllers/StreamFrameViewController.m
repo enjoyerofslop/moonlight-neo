@@ -44,7 +44,10 @@
     UILabel *_tipLabel;
     UIActivityIndicatorView *_spinner;
     StreamView *_streamView;
-    CGSize _lastLayoutSize;
+    CGRect _videoRegion;
+    CGRect _controlRegion;
+    UIEdgeInsets _controlInsets;
+    BOOL _largeControls;
     UIScrollView *_scrollView;
     BOOL _userIsInteracting;
     CGSize _keyboardSize;
@@ -212,35 +215,111 @@
     [self.view addSubview:_stageLabel];
     [self.view addSubview:_spinner];
     [self.view addSubview:_tipLabel];
+    
+#if !TARGET_OS_TV && defined(__IPHONE_27_1)
+    if (@available(iOS 27.1, *)) {
+        // Folding iPhone Duo moves the fold without resizing the view,
+        // so lay out again whenever the hinge moves.
+        __weak UIView* view = self.view;
+        [self.view addInteraction:[[UIHingeInteraction alloc] initWithUpdateHandler:^(UIHingeInteraction* interaction, UIHingeInteractionUpdate* update) {
+            [view setNeedsLayout];
+        }]];
+    }
+#endif
 }
 
 - (UIView *)viewForZoomingInScrollView:(UIScrollView *)scrollView {
     return _streamView;
 }
 
-// The window can change size during a stream, for example when folding or
-// unfolding iPhone Duo. Keep the stream view and video layer filling it.
+#if !TARGET_OS_TV
+// Returns the fold of iPhone Duo while it's folded like a laptop, or CGRectNull
+- (CGRect)horizontalFold {
+#if defined(__IPHONE_27_1)
+    if (@available(iOS 27.1, *)) {
+        // Only active regions are returned, and the fold is only active while folded
+        for (UIViewReservedRegion* region in [self.view reservedRegionsOfKind:[UIViewReservedRegionKind divisionRegionKind]]) {
+            if (region.frame.size.width > region.frame.size.height) {
+                return region.frame;
+            }
+        }
+    }
+#endif
+    return CGRectNull;
+}
+#endif
+
+// The window can change size during a stream, for example when opening or
+// closing iPhone Duo, and folding it moves the fold. Keep the video and the
+// on-screen controls laid out for the space we have.
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-
-    CGSize size = self.view.bounds.size;
-    if (CGSizeEqualToSize(size, _lastLayoutSize)) {
+    
+    CGRect bounds = self.view.bounds;
+    CGRect videoRegion = bounds;
+    CGRect controlRegion = bounds;
+    // Keep the on-screen controls clear of the camera at the side of the screen
+    UIEdgeInsets controlInsets = UIEdgeInsetsMake(0, self.view.safeAreaInsets.left, 0, self.view.safeAreaInsets.right);
+    BOOL largeControls = self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassRegular &&
+                         self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassRegular;
+    
+#if !TARGET_OS_TV
+    // The stream is landscape, so in a portrait window (the inner display of iPhone Duo
+    // held upright) the video goes at the top and the controls get the space below it.
+    // Folded like a laptop, the video stays above the fold and the controls below it.
+    CGRect safeBounds = UIEdgeInsetsInsetRect(bounds, self.view.safeAreaInsets);
+    CGRect fold = [self horizontalFold];
+    if (!CGRectIsNull(fold)) {
+        videoRegion = CGRectMake(safeBounds.origin.x, safeBounds.origin.y,
+                                 safeBounds.size.width, CGRectGetMinY(fold) - safeBounds.origin.y);
+        controlRegion = CGRectMake(bounds.origin.x, CGRectGetMaxY(fold),
+                                   bounds.size.width, CGRectGetMaxY(bounds) - CGRectGetMaxY(fold));
+        largeControls = NO;
+    }
+    else if (bounds.size.height > bounds.size.width) {
+        float streamAspectRatio = (float)self.streamConfig.width / (float)self.streamConfig.height;
+        CGFloat videoHeight = MIN(safeBounds.size.width / streamAspectRatio, safeBounds.size.height / 2);
+        videoRegion = CGRectMake(safeBounds.origin.x, safeBounds.origin.y, safeBounds.size.width, videoHeight);
+        controlRegion = CGRectMake(bounds.origin.x, CGRectGetMaxY(videoRegion),
+                                   bounds.size.width, CGRectGetMaxY(bounds) - CGRectGetMaxY(videoRegion));
+        largeControls = NO;
+    }
+#endif
+    
+    if (CGRectEqualToRect(videoRegion, _videoRegion) &&
+        CGRectEqualToRect(controlRegion, _controlRegion) &&
+        UIEdgeInsetsEqualToEdgeInsets(controlInsets, _controlInsets) &&
+        largeControls == _largeControls) {
         return;
     }
-    _lastLayoutSize = size;
-
+    _videoRegion = videoRegion;
+    _controlRegion = controlRegion;
+    _controlInsets = controlInsets;
+    _largeControls = largeControls;
+    
     if (_scrollView != nil) {
-        // Reset any zoom so the stream view can match the new size
+        // Reset any zoom so the stream view matches our view again
         [_scrollView setZoomScale:1.0f animated:NO];
-        _streamView.frame = _scrollView.bounds;
+        _scrollView.contentOffset = CGPointZero;
+        _streamView.frame = CGRectMake(0, 0, _scrollView.bounds.size.width, _scrollView.bounds.size.height);
         _scrollView.contentSize = _scrollView.bounds.size;
     }
-
-    _stageLabel.center = CGPointMake(size.width / 2, _stageLabel.center.y);
-    _spinner.center = CGPointMake(size.width / 2, _spinner.center.y);
-    _tipLabel.center = CGPointMake(size.width / 2, _tipLabel.center.y);
-
+    
+    [self layoutStatusLabels];
+    
+    [_streamView layoutVideoInRegion:[self.view convertRect:videoRegion toView:_streamView]
+                    controlsInRegion:[self.view convertRect:controlRegion toView:_streamView]
+                       controlInsets:controlInsets
+                       largeControls:largeControls];
     [_streamMan updateRendererLayout];
+}
+
+// Center the connection progress and tip text where the video will be
+- (void)layoutStatusLabels {
+    CGPoint center = CGPointMake(CGRectGetMidX(_videoRegion), CGRectGetMidY(_videoRegion));
+    _stageLabel.center = center;
+    _spinner.center = CGPointMake(center.x, center.y - _stageLabel.frame.size.height - _spinner.frame.size.height);
+    _tipLabel.center = CGPointMake(center.x, CGRectGetMinY(_videoRegion) + _videoRegion.size.height * 0.9);
 }
 
 - (void)willMoveToParentViewController:(UIViewController *)parent {
@@ -505,7 +584,7 @@
         NSString* titleCase = [[[lowerCase substringToIndex:1] uppercaseString] stringByAppendingString:[lowerCase substringFromIndex:1]];
         [self->_stageLabel setText:titleCase];
         [self->_stageLabel sizeToFit];
-        self->_stageLabel.center = CGPointMake(self.view.frame.size.width / 2, self->_stageLabel.center.y);
+        [self layoutStatusLabels];
     });
 }
 

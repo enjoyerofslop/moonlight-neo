@@ -30,6 +30,16 @@
 - (void) showOnScreenControls;
 - (OnScreenControlsLevel) getCurrentOscState;
 
+// Fits the video into videoRegion and lays out the on-screen controls in controlRegion,
+// at least controlInsets in from its sides. Both are in the stream view's coordinate space.
+- (void) layoutVideoInRegion:(CGRect)videoRegion
+            controlsInRegion:(CGRect)controlRegion
+               controlInsets:(UIEdgeInsets)controlInsets
+               largeControls:(BOOL)largeControls;
+
+// The frame of the video in the stream view's coordinate space
+- (CGRect) getVideoAreaFrame;
+
 #if !TARGET_OS_TV
 - (void) updateCursorLocation:(CGPoint)location isMouse:(BOOL)isMouse;
 #endif

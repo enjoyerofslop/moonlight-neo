@@ -59,7 +59,7 @@
     BOOL l3Set;
     BOOL r3Set;
     
-    BOOL _iPad;
+    BOOL _largeLayout;
     CGRect _controlArea;
     UIView* _view;
     OnScreenControlsLevel _level;
@@ -120,19 +120,7 @@ static float L3_Y;
     _deadTouches = [[NSMutableArray alloc] init];
     _swapABXY = streamConfig.swapABXYButtons;
     
-    _iPad = ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad);
-    _controlArea = CGRectMake(0, 0, _view.frame.size.width, _view.frame.size.height);
-    if (_iPad)
-    {
-        // Cut down the control area on an iPad so the controls are more reachable
-        _controlArea.size.height = _view.frame.size.height / 2.0;
-        _controlArea.origin.y = _view.frame.size.height - _controlArea.size.height;
-    }
-    else
-    {
-        _controlArea.origin.x = _controlArea.size.width * EDGE_WIDTH;
-        _controlArea.size.width -= _controlArea.origin.x * 2;
-    }
+    [self layoutInArea:_view.bounds insets:UIEdgeInsetsZero largeLayout:NO];
     
     _aButton = [CALayer layer];
     _bButton = [CALayer layer];
@@ -156,6 +144,36 @@ static float L3_Y;
     _rightStick = [CALayer layer];
     
     return self;
+}
+
+- (void) layoutInArea:(CGRect)area insets:(UIEdgeInsets)insets largeLayout:(BOOL)largeLayout {
+    _largeLayout = largeLayout;
+    _controlArea = area;
+    if (_largeLayout)
+    {
+        // Cut down the control area on large displays so the controls are more reachable
+        _controlArea.size.height = area.size.height / 2.0;
+        _controlArea.origin.y = CGRectGetMaxY(area) - _controlArea.size.height;
+        _controlArea.origin.x += insets.left;
+        _controlArea.size.width -= insets.left + insets.right;
+    }
+    else
+    {
+        CGFloat leftEdge = MAX(area.size.width * EDGE_WIDTH, insets.left);
+        CGFloat rightEdge = MAX(area.size.width * EDGE_WIDTH, insets.right);
+        _controlArea.origin.x += leftEdge;
+        _controlArea.size.width -= leftEdge + rightEdge;
+    }
+    
+    // Only update controls if we're showing, otherwise
+    // show will do it for us.
+    if (_visible) {
+        // Move the controls without animating them across the screen
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        [self updateControls];
+        [CATransaction commit];
+    }
 }
 
 - (void) show {
@@ -262,7 +280,7 @@ static float L3_Y;
     L3_Y = _controlArea.size.height * .85 + _controlArea.origin.y;
     R3_Y = _controlArea.size.height * .85 + _controlArea.origin.y;
     
-    if (_iPad) {
+    if (_largeLayout) {
         L3_X = _controlArea.size.width * .15 + _controlArea.origin.x;
         R3_X = _controlArea.size.width * .85 + _controlArea.origin.x;
     }
@@ -289,8 +307,8 @@ static float L3_Y;
     SELECT_X = _controlArea.size.width * .05 + _controlArea.origin.x;
     SELECT_Y = _controlArea.size.height * .95 + _controlArea.origin.y;
     
-    if (_iPad) {
-        // The analog sticks are kept closer to the sides on iPad
+    if (_largeLayout) {
+        // The analog sticks are kept closer to the sides on large displays
         LS_CENTER_X = _controlArea.size.width * .15 + _controlArea.origin.x;
         RS_CENTER_X = _controlArea.size.width * .85 + _controlArea.origin.x;
     }
@@ -310,8 +328,8 @@ static float L3_Y;
     R2_Y = _controlArea.size.height * .9 + _controlArea.origin.y;
     R2_X = _controlArea.size.width * .9 + _controlArea.origin.x;
     
-    if (_iPad) {
-        // Lower the D-pad and buttons on iPad
+    if (_largeLayout) {
+        // Lower the D-pad and buttons on large displays
         D_PAD_CENTER_Y = _controlArea.size.height * .75 + _controlArea.origin.y;
         BUTTON_CENTER_Y = _controlArea.size.height * .75 + _controlArea.origin.y;
         
@@ -332,9 +350,9 @@ static float L3_Y;
     BUTTON_CENTER_X = _controlArea.size.width * .9 + _controlArea.origin.x;
     BUTTON_CENTER_Y = _controlArea.size.height * .60 + _controlArea.origin.y;
     
-    if (_iPad)
+    if (_largeLayout)
     {
-        // The analog sticks are kept closer to the sides on iPad
+        // The analog sticks are kept closer to the sides on large displays
         LS_CENTER_X = _controlArea.size.width * .22 + _controlArea.origin.x;
         LS_CENTER_Y = _controlArea.size.height * .80 + _controlArea.origin.y;
         RS_CENTER_X = _controlArea.size.width * .77 + _controlArea.origin.x;
@@ -358,8 +376,8 @@ static float L3_Y;
     R1_Y = _controlArea.size.height * .27 + _controlArea.origin.y;
     R2_Y = _controlArea.size.height * .1 + _controlArea.origin.y;
     
-    if (_iPad) {
-        // Move L/R buttons closer to the side on iPad
+    if (_largeLayout) {
+        // Move L/R buttons closer to the side on large displays
         L1_X = _controlArea.size.width * .05 + _controlArea.origin.x;
         L2_X = _controlArea.size.width * .05 + _controlArea.origin.x;
         R1_X = _controlArea.size.width * .95 + _controlArea.origin.x;

@@ -25,6 +25,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     NSMutableSet* keysDown;
     
     float streamAspectRatio;
+    CGRect videoRegion;
     
     // iOS 13.4 mouse support
     NSInteger lastMouseButtonMask;
@@ -51,6 +52,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
                   config:(StreamConfiguration*)streamConfig {
     self->interactionDelegate = interactionDelegate;
     self->streamAspectRatio = (float)streamConfig.width / (float)streamConfig.height;
+    self->videoRegion = CGRectNull;
     
     TemporarySettings* settings = [[[DataManager alloc] init] getSettings];
     
@@ -176,12 +178,33 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
 }
 
-- (CGSize) getVideoAreaSize {
-    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
-        return CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
+- (void) layoutVideoInRegion:(CGRect)region
+            controlsInRegion:(CGRect)controlRegion
+               controlInsets:(UIEdgeInsets)controlInsets
+               largeControls:(BOOL)largeControls {
+    videoRegion = region;
+#if !TARGET_OS_TV
+    [onScreenControls layoutInArea:controlRegion insets:controlInsets largeLayout:largeControls];
+#endif
+}
+
+- (CGRect) getVideoAreaFrame {
+    // This logic mimics what iOS does with AVLayerVideoGravityResizeAspect,
+    // centering the video in its region (the whole view unless told otherwise)
+    CGRect region = CGRectIsNull(videoRegion) ? self.bounds : videoRegion;
+    CGSize videoSize;
+    if (region.size.width > region.size.height * streamAspectRatio) {
+        videoSize = CGSizeMake(region.size.height * streamAspectRatio, region.size.height);
     } else {
-        return CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
+        videoSize = CGSizeMake(region.size.width, region.size.width / streamAspectRatio);
     }
+    return CGRectMake(CGRectGetMidX(region) - videoSize.width / 2,
+                      CGRectGetMidY(region) - videoSize.height / 2,
+                      videoSize.width, videoSize.height);
+}
+
+- (CGSize) getVideoAreaSize {
+    return [self getVideoAreaFrame].size;
 }
 
 - (CGPoint) adjustCoordinatesForVideoArea:(CGPoint)point {
@@ -195,28 +218,24 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     // and add 1 pixel if we're to the right/above. It should be imperceptible
     // to the user but it will allow activation of gestures that require contact
     // with the edge of the screen (like Aero Snap).
-    if (x < self.bounds.size.width / 2) {
+    CGRect videoFrame = [self getVideoAreaFrame];
+    if (x < CGRectGetMidX(videoFrame)) {
         x--;
     }
     else {
         x++;
     }
-    if (y < self.bounds.size.height / 2) {
+    if (y < CGRectGetMidY(videoFrame)) {
         y--;
     }
     else {
         y++;
     }
     
-    // This logic mimics what iOS does with AVLayerVideoGravityResizeAspect
-    CGSize videoSize = [self getVideoAreaSize];
-    CGPoint videoOrigin = CGPointMake(self.bounds.size.width / 2 - videoSize.width / 2,
-                                      self.bounds.size.height / 2 - videoSize.height / 2);
-    
     // Confine the cursor to the video region. We don't just discard events outside
     // the region because we won't always get one exactly when the mouse leaves the region.
-    return CGPointMake(MIN(MAX(x, videoOrigin.x), videoOrigin.x + videoSize.width) - videoOrigin.x,
-                       MIN(MAX(y, videoOrigin.y), videoOrigin.y + videoSize.height) - videoOrigin.y);
+    return CGPointMake(MIN(MAX(x, CGRectGetMinX(videoFrame)), CGRectGetMaxX(videoFrame)) - videoFrame.origin.x,
+                       MIN(MAX(y, CGRectGetMinY(videoFrame)), CGRectGetMaxY(videoFrame)) - videoFrame.origin.y);
 }
 
 #if !TARGET_OS_TV
@@ -664,17 +683,6 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
         }
     }
     
-    // This logic mimics what iOS does with AVLayerVideoGravityResizeAspect
-    CGSize videoSize;
-    CGPoint videoOrigin;
-    if (self.bounds.size.width > self.bounds.size.height * streamAspectRatio) {
-        videoSize = CGSizeMake(self.bounds.size.height * streamAspectRatio, self.bounds.size.height);
-    } else {
-        videoSize = CGSizeMake(self.bounds.size.width, self.bounds.size.width / streamAspectRatio);
-    }
-    videoOrigin = CGPointMake(self.bounds.size.width / 2 - videoSize.width / 2,
-                              self.bounds.size.height / 2 - videoSize.height / 2);
-    
     // Move the cursor on the host if no buttons are pressed.
     // Motion with buttons pressed in handled in touchesMoved:
     if (lastMouseButtonMask == 0) {
@@ -682,7 +690,7 @@ static const double X1_MOUSE_SPEED_DIVISOR = 2.5;
     }
     
     // The pointer interaction should cover the video region only
-    return [UIPointerRegion regionWithRect:CGRectMake(videoOrigin.x, videoOrigin.y, videoSize.width, videoSize.height) identifier:nil];
+    return [UIPointerRegion regionWithRect:[self getVideoAreaFrame] identifier:nil];
 }
 
 - (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction styleForRegion:(UIPointerRegion *)region  API_AVAILABLE(ios(13.4)) {

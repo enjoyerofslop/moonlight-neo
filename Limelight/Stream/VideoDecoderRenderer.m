@@ -43,15 +43,11 @@ extern int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     // of the video stream. We used to use AVLayerVideoGravityResizeAspect, but that
     // respects the PAR encoded in the SPS which causes our computed video-relative
     // touch location to be wrong in StreamView if the aspect ratio of the host
-    // desktop doesn't match the aspect ratio of the stream.
-    CGSize videoSize;
-    if (_view.bounds.size.width > _view.bounds.size.height * _streamAspectRatio) {
-        videoSize = CGSizeMake(_view.bounds.size.height * _streamAspectRatio, _view.bounds.size.height);
-    } else {
-        videoSize = CGSizeMake(_view.bounds.size.width, _view.bounds.size.width / _streamAspectRatio);
-    }
-    displayLayer.position = CGPointMake(CGRectGetMidX(_view.bounds), CGRectGetMidY(_view.bounds));
-    displayLayer.bounds = CGRectMake(0, 0, videoSize.width, videoSize.height);
+    // desktop doesn't match the aspect ratio of the stream. StreamView decides
+    // where the video goes, so touch mapping always matches what's on screen.
+    CGRect videoFrame = [_view getVideoAreaFrame];
+    displayLayer.position = CGPointMake(CGRectGetMidX(videoFrame), CGRectGetMidY(videoFrame));
+    displayLayer.bounds = CGRectMake(0, 0, videoFrame.size.width, videoFrame.size.height);
 }
 
 // Called when the view size changes (e.g. folding or unfolding iPhone Duo)

@@ -33,4 +33,9 @@ typedef NS_ENUM(NSInteger, OnScreenControlsLevel) {
 - (OnScreenControlsLevel) getLevel;
 - (void) show;
 
+// Lays out the controls in an area of the view, keeping at least insets away
+// from its sides (for example, the safe area around a camera). The large layout,
+// used on iPad-sized displays, keeps the controls in the bottom half of the area.
+- (void) layoutInArea:(CGRect)area insets:(UIEdgeInsets)insets largeLayout:(BOOL)largeLayout;
+
 @end
