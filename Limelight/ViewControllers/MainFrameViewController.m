@@ -118,13 +118,16 @@ static NSMutableSet* hostList;
 
 - (void)disableUpButton {
 #if !TARGET_OS_TV
+    // A bar button without a title still draws an empty capsule on iOS 26, so hide it too
     [self->_upButton setTitle:nil];
+    self->_upButton.hidden = YES;
 #endif
 }
 
 - (void)enableUpButton {
 #if !TARGET_OS_TV
     [self->_upButton setTitle:@"Select New Host"];
+    self->_upButton.hidden = NO;
 #endif
 }
 
@@ -914,9 +917,33 @@ static NSMutableSet* hostList;
 // Adjust the subviews for the safe area on the iPhone X.
 - (void)viewSafeAreaInsetsDidChange {
     [super viewSafeAreaInsetsDidChange];
-    
+
     [self adjustScrollViewForSafeArea:self.collectionView];
     [self adjustScrollViewForSafeArea:self->hostScrollView];
+}
+
+- (CGRect)hostScrollViewFrame {
+    CGRect navBarFrame = self.navigationController.navigationBar.frame;
+    return CGRectMake(0, CGRectGetMaxY(navBarFrame), self.view.bounds.size.width, self.view.bounds.size.height / 2);
+}
+
+// The view changes size when iPhone Duo is opened, closed or rotated,
+// so keep the host picker filling the width and the hosts centered in it.
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+
+    CGRect hostFrame = [self hostScrollViewFrame];
+    if (CGRectEqualToRect(hostScrollView.frame, hostFrame)) {
+        return;
+    }
+
+    hostScrollView.frame = hostFrame;
+    for (UIView* view in hostScrollView.subviews) {
+        if ([view isKindOfClass:[UIComputerView class]]) {
+            view.center = CGPointMake(view.center.x, hostFrame.size.height / 2);
+        }
+    }
+    hostScrollView.contentSize = CGSizeMake(hostScrollView.contentSize.width, hostFrame.size.height);
 }
 
 - (void)viewDidLoad
@@ -979,7 +1006,7 @@ static NSMutableSet* hostList;
     _boxArtCache = [[NSCache alloc] init];
         
     hostScrollView = [[ComputerScrollView alloc] init];
-    hostScrollView.frame = CGRectMake(0, self.navigationController.navigationBar.frame.origin.y + self.navigationController.navigationBar.frame.size.height, self.view.frame.size.width, self.view.frame.size.height / 2);
+    hostScrollView.frame = [self hostScrollViewFrame];
     [hostScrollView setShowsHorizontalScrollIndicator:NO];
     hostScrollView.delaysContentTouches = NO;
     
