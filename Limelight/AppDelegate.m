@@ -33,6 +33,22 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
 }
 
 #if !TARGET_OS_TV
+// The inner display of iPhone Duo scales an app that doesn't list portrait in its
+// Info.plist down to a band across the fold when the device is held upright. The
+// Info.plist lists portrait so the app can fill that display and a stream can put
+// the video above the fold and the controls below it. Either end of the inner
+// display can be at the top, so both portrait orientations are allowed there.
+// Everywhere else the app stays landscape-only.
+- (UIInterfaceOrientationMask)application:(UIApplication *)application supportedInterfaceOrientationsForWindow:(UIWindow *)window {
+    UITraitCollection* screenTraits = window.windowScene.screen.traitCollection;
+    if (screenTraits.userInterfaceIdiom == UIUserInterfaceIdiomPhone &&
+        screenTraits.horizontalSizeClass == UIUserInterfaceSizeClassRegular &&
+        screenTraits.verticalSizeClass == UIUserInterfaceSizeClassRegular) {
+        return UIInterfaceOrientationMaskAll;
+    }
+    return UIInterfaceOrientationMaskLandscape;
+}
+
 - (void)application:(UIApplication *)application performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completionHandler:(void (^)(BOOL succeeded))completionHandler {
     _pcUuidToLoad = (NSString*)[shortcutItem.userInfo objectForKey:@"UUID"];
     _shortcutCompletionHandler = completionHandler;
@@ -237,6 +253,13 @@ static NSString* DB_NAME = @"Limelight_iOS.sqlite";
     self.window.rootViewController = [storyboard instantiateInitialViewController];
     appDelegate.window = self.window;
     [self.window makeKeyAndVisible];
+    
+    // Opening or closing iPhone Duo moves the window to the other display, which
+    // changes its size classes and can change the supported orientations
+    [self.window registerForTraitChanges:@[UITraitHorizontalSizeClass.class, UITraitVerticalSizeClass.class]
+                             withHandler:^(UIWindow* window, UITraitCollection* previousTraitCollection) {
+        [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
+    }];
 }
 
 - (void)windowScene:(UIWindowScene *)windowScene performActionForShortcutItem:(UIApplicationShortcutItem *)shortcutItem completionHandler:(void (^)(BOOL succeeded))completionHandler {
