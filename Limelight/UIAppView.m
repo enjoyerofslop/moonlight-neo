@@ -71,7 +71,12 @@ static UIImage* noImage;
     // Rasterizing the cell layer increases rendering performance by quite a bit
     // but we want it unrasterized for tvOS where it must be scaled.
     self.layer.shouldRasterize = YES;
-    self.layer.rasterizationScale = [UIScreen mainScreen].scale;
+    
+    // Rasterize at the scale of the display we're on, which can change
+    // when iPhone Duo is opened or closed
+    [self registerForTraitChanges:@[UITraitDisplayScale.class] withHandler:^(UIAppView* view, UITraitCollection* previousTraitCollection) {
+        view.layer.rasterizationScale = view.traitCollection.displayScale;
+    }];
     
     if (@available(iOS 13.4.1, *)) {
         // Allow the button style to change when moused over
@@ -83,6 +88,16 @@ static UIImage* noImage;
     
     return self;
 }
+
+#if !TARGET_OS_TV
+- (void)didMoveToWindow {
+    [super didMoveToWindow];
+    
+    if (self.window != nil) {
+        self.layer.rasterizationScale = self.traitCollection.displayScale;
+    }
+}
+#endif
 
 - (void)didMoveToSuperview {
     // Start our update loop when we are added to our cell

@@ -140,12 +140,19 @@ BOOL isCustomResolution(CGSize res) {
     // Ensure we pick a bitrate that falls exactly onto a slider notch
     _bitrate = bitrateTable[[self getSliderValueForBitrate:[currentSettings.bitrate intValue]]];
 
-    // Get the size of the screen with and without safe area insets
+    // Get the size of the screen with and without safe area insets. Streams are
+    // always landscape, but the inner display of iPhone Duo can be in portrait,
+    // so measure along the long side of the screen.
     UIWindow *window = UIApplication.sharedApplication.windows.firstObject;
     CGFloat screenScale = window.screen.scale;
-    CGFloat safeAreaWidth = (window.frame.size.width - window.safeAreaInsets.left - window.safeAreaInsets.right) * screenScale;
-    CGFloat fullScreenWidth = window.frame.size.width * screenScale;
-    CGFloat fullScreenHeight = window.frame.size.height * screenScale;
+    BOOL portrait = window.frame.size.height > window.frame.size.width;
+    CGFloat longSide = portrait ? window.frame.size.height : window.frame.size.width;
+    CGFloat shortSide = portrait ? window.frame.size.width : window.frame.size.height;
+    CGFloat longSideInsets = portrait ? window.safeAreaInsets.top + window.safeAreaInsets.bottom
+                                      : window.safeAreaInsets.left + window.safeAreaInsets.right;
+    CGFloat safeAreaWidth = (longSide - longSideInsets) * screenScale;
+    CGFloat fullScreenWidth = longSide * screenScale;
+    CGFloat fullScreenHeight = shortSide * screenScale;
     
     self.resolutionDisplayView.layer.cornerRadius = 10;
     self.resolutionDisplayView.clipsToBounds = YES;
@@ -191,7 +198,7 @@ BOOL isCustomResolution(CGSize res) {
     // Only show the 120 FPS option if we have a > 60-ish Hz display
     bool enable120Fps = false;
     if (@available(iOS 10.3, tvOS 10.3, *)) {
-        if ([UIScreen mainScreen].maximumFramesPerSecond > 62) {
+        if (window.screen.maximumFramesPerSecond > 62) {
             enable120Fps = true;
         }
     }
